@@ -1,0 +1,243 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+	<head>
+		<title>BetterDresden</title>
+
+		<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+		
+		<script type="text/javascript" src="http://code.jquery.com/jquery-1.5.2.min.js"></script>
+					
+		<link type="text/css" rel="stylesheet" href="style_new.css" />
+		
+		<script type="text/javascript" src="http://geoxml3.googlecode.com/svn/branches/polys/geoxml3.js"></script>
+		
+		<script type="text/javascript" src="http://geoxml3.googlecode.com/svn/trunk/ProjectedOverlay.js"></script>
+		
+		<script type="text/javascript">
+					
+			var districtIssues = new Array();
+			
+			$.ajax({
+				url: 'http://141.76.47.158:5984/betterdd/_design/betterdd/_view/alldocsdistricts/',
+				type: 'get',
+				dataType: 'jsonp',
+				success: function(Object) {
+					for ( var i = 0; i < Object.rows.length; i++) {
+						districtIssues [i] = Object.rows[i].value;
+					}
+				
+				}
+			});
+					
+			function RgbToColor(r,g,b){
+				return '#' + byte2Hex(r) + byte2Hex(g) + byte2Hex(b);
+			}
+				 
+			function byte2Hex(n) {
+				var hexString = "0123456789ABCDEF";
+				return String(hexString.substr((n >> 4) & 0x0F,1)) + hexString.substr(n & 0x0F,1);
+			}
+											
+			Array.prototype.max = function() {
+				return Math.max.apply(Math, this)
+			}
+			Array.prototype.min = function() {
+				return Math.min.apply(Math, this)
+			}
+			
+			var disrtictOccurrences = new Array();
+			var counterDisrtictOccurrences = new Array();
+			var values = new Array ();
+			var max;
+			
+			function countDisrticts() {
+				for (var i = 0; i < districtIssues.length; i++) {
+					var district = districtIssues[i].district;
+				//	console.log ('District: ' + district);
+					if (!disrtictOccurrences[district]) {
+						disrtictOccurrences[district] = 1
+					} else {
+						disrtictOccurrences[district] = disrtictOccurrences[district] + 1;
+					}
+					counterDisrtictOccurrences [i] = disrtictOccurrences[district];
+				}
+			//	console.log('***Districts with their occurrences:');
+			//	console.log(disrtictOccurrences);
+			//	console.log(counterDisrtictOccurrences);
+								
+				for  (var i in disrtictOccurrences) {
+						var disrtictName = i;
+						var numberOfOccurrences = disrtictOccurrences[i];
+					//	console.log(disrtictName);
+					//	console.log(numberOfOccurrences);
+						if (isNaN(numberOfOccurrences)==false) {
+							values.push(numberOfOccurrences);
+						}
+					}
+			//	console.log (values.length);				
+				max = Math.max.apply(null, values);
+			//	console.log (max);
+				min = Math.min.apply(null, values);
+			//	console.log (min);
+			}
+								
+			function rgbToHsv(r, g, b){
+				r = r/255, g = g/255, b = b/255;
+				var max = Math.max(r, g, b), min = Math.min(r, g, b);
+				var h, s, v = max;
+				var d = max - min;
+				s = max == 0 ? 0 : d / max;
+				if(max == min){
+					h = 0; // achromatic
+				}else{
+					switch(max){
+						case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+						case g: h = (b - r) / d + 2; break;
+						case b: h = (r - g) / d + 4; break;
+					}
+					h /= 6;
+				}
+				return [h, s, v];
+			}
+			function hsvToRgb([h, s, v]){
+				var r, g, b;
+				var i = Math.floor(h * 6);
+				var f = h * 6 - i;
+				var p = v * (1 - s);
+				var q = v * (1 - f * s);
+				var t = v * (1 - (1 - f) * s);
+				switch(i % 6){
+					case 0: r = v, g = t, b = p; break;
+					case 1: r = q, g = v, b = p; break;
+					case 2: r = p, g = v, b = t; break;
+					case 3: r = p, g = q, b = v; break;
+					case 4: r = t, g = p, b = v; break;
+					case 5: r = v, g = p, b = q; break;
+				}
+				return [r * 255, g * 255, b * 255];
+			}			
+					
+			var startTriplet= rgbToHsv(232,232,255); 
+			var endTriplet= rgbToHsv(0, 0, 255); 
+		//	console.log (startTriplet);
+		//	console.log (endTriplet);
+		
+			function getRgbColor(value){
+			//	console.log ('***Function returns color based on the value inputted' );
+				function transition(value, max, startPoint, endPoint){
+					return startPoint + (endPoint - startPoint)*value/max	
+				}
+				function transitionForTriplet(value, max, [s1, s2, s3], [e1, e2, e3]){
+					var r1 = transition(value, max, s1, e1);
+					var r2 = transition(value, max, s2, e2);
+					var r3 = transition(value, max, s3, e3);
+					return ([r1, r2, r3]);
+				}
+						
+				var rgbArray = hsvToRgb(transitionForTriplet(value, max, startTriplet, endTriplet));
+				return (rgbArray);
+			}
+						
+			var map;
+			var geoXml;
+						
+			function initializeMap() {
+				var latlng = new google.maps.LatLng(51.044955569885786, 13.748188018798828);
+				var options = {
+					zoom : 11,
+					center : latlng,
+					minZoom: 11,
+					mapTypeId : google.maps.MapTypeId.ROADMAP
+				};
+				
+				map = new google.maps.Map(document.getElementById("map_Dresden"),options);
+	
+				geoXml = new geoXML3.parser({
+                    map: map,
+					afterParse: useTheData,
+				});
+                geoXml.parse('boundaries.kml');
+			}
+						
+			function kmlClick(pm) {
+				if (geoXml.docs[0].gpolygons[pm].getMap())
+					google.maps.event.trigger(geoXml.docs[0].gpolygons[pm],"click");
+					
+				//	console.log (geoXml.docs[0].gpolygons[pm]);
+			}
+					
+			function useTheData(doc){
+				countDisrticts();
+				
+				var sidebarHtml = "<table>";
+				for (var i = 0; i < doc[0].gpolygons.length; i++) {
+					sidebarHtml += '<tr><td><a id="placemarkName" href="javascript:kmlClick('+i+');">'+doc[0].placemarks[i].name+'</a></td></tr>';
+					doc[0].gpolygons[i].setOptions({fillOpacity: 0});
+					for  (var j in disrtictOccurrences) {
+						var disrtictName = j;
+						var numberOfOccurrences = disrtictOccurrences[j];
+						for (var k = 0; k < values.length; k++) {
+							var value = values [k];
+							if (disrtictName==doc[0].placemarks[i].name && numberOfOccurrences==value) {
+								var rgb = getRgbColor(value);
+								for (var l = 0; l < rgb.length; ++l) {
+									var red = Math.round (rgb[0]);
+									var green = Math.round (rgb[1]);
+									var blue = Math.round (rgb[2]);
+								}
+													
+							//	console.log(disrtictName);
+							//	console.log(numberOfOccurrences);
+							//	console.log(value);
+							//	console.log (rgb);
+							//	console.log ('RGB: ' +red,green,blue);
+							//	console.log (doc[0].gpolygons [i]);
+								
+								doc[0].gpolygons[i].setOptions({fillColor: RgbToColor(red,green,blue), fillOpacity: 1});
+							
+							} 
+						}
+					}
+				}
+				sidebarHtml += "</table>";
+				document.getElementById("sidebar").innerHTML = sidebarHtml;
+			}
+			
+			function initMaxMin() {
+				countDisrticts();
+				var minNumber = document.getElementById("minNumber");
+				minNumber.appendChild(document.createTextNode(min));
+				var maxNumber = document.getElementById("maxNumber");
+				maxNumber.appendChild(document.createTextNode(max));
+			}
+			
+			function initPage() {
+				initializeMap();
+				initMaxMin();
+			}
+
+		</script>
+	</head>
+
+	<body onload="initPage()" >
+		<div id="map_Dresden"></div>
+		<a href="BetterDresden_mainMap.html"><div id="districtBtn"><img id="districtImg" src="districtImg.png"><b>Main map</b></div></a>
+						
+		<div class="colorGradient_panel">
+			<p id="colorGradient_panel_name">Number of issues in the district</p>
+			<img id="colorGradient" src="colorGradientBlue.png">
+			<p id="minNumber"></p>
+			<p id="maxNumber"></p>
+		</div>
+		
+		<div class="kml_panel">
+			<table class="kml_table">
+				<tr><p class="kml_panel_name">Dresden districts</p><hr /></tr>
+				<tr><div id="sidebar"></div></tr>
+			</table>
+		</div>
+	
+	</body>
+</html>
+
+		

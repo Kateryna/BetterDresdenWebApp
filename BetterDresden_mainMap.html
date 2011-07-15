@@ -1,0 +1,385 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+	<head>
+		<title>BetterDresden</title>
+
+		<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+
+		<script type="text/javascript" src="http://google-maps-utility-library-v3.googlecode.com/svn/trunk/markerclusterer/src/markerclusterer.js"></script>
+
+		<script type="text/javascript" src="http://code.jquery.com/jquery-1.5.2.min.js"></script>
+		
+		<link type="text/css" rel="stylesheet" href="style_new.css" />
+		
+		<script type="text/javascript" src="fancybox/jquery.fancybox-1.3.4.pack.js"></script>
+		
+		<link rel="stylesheet" href="fancybox/jquery.fancybox-1.3.4.css" type="text/css" media="screen" />
+
+		
+		<script type="text/javascript">
+
+			var issues = new Array();
+			var imageIssues = new Array();
+			var starIssues = new Array();
+			
+			function updateModel(updateMarkersOnFinish) {
+				var issuesFinished=false;
+				var imagesFinished=false;
+
+				$.ajax({
+					url: 'http://141.76.47.158:5984/betterdd/_design/betterdd/_view/alldocsmap/',
+					type: 'get',
+					dataType: 'jsonp',
+					success: function(Object) {
+						for ( var i = 0; i < Object.rows.length; i++) {
+							issues [i] = Object.rows[i].value;
+							updatedCreationTime = updateCreationTime(parseInt(issues[i].creationTime));
+							issues [i].creationTime = updatedCreationTime;
+							issuesFinished=true;
+							//if both finished, updateMarkers
+							if (imagesFinished && updateMarkersOnFinish)
+								updateMarkers()
+						}
+					}
+				});
+
+				$.ajax({
+					url: 'http://141.76.47.158:5984/betterdd/_design/betterdd/_view/alldocsimages/',
+					type: 'get',
+					dataType: 'jsonp',
+					success: function(Object) {
+						for ( var j = 0; j < Object.rows.length; j++) {
+							imageIssues [j] = Object.rows[j].value;
+						}
+						imagesFinished=true;
+						//if both finished, updateMarkers
+						if (issuesFinished && updateMarkersOnFinish)
+							updateMarkers()
+					}
+				});
+							
+			}
+			updateModel(false);
+			
+			function updateCreationTime(creationTime) {
+				var currentDate = new Date();
+				currentDate.toString();
+				currentDateMs = Date.parse(currentDate);
+				if (creationTime >= currentDateMs-3600000){
+					return "Last hour";
+				} else if (creationTime >= currentDateMs-86400000) {
+					return "Last day";
+				} else if (creationTime >= currentDateMs-604800000){
+					return "Last week";
+				} else if (creationTime >= currentDateMs-2592000000){
+					return "Last month";
+				} else {
+					return "During all time";
+				}
+			}
+
+			var markerCluster;
+			function updateMarkers() {
+				updateTypeCheckBoxes();
+				for ( var i = 0; i < markersArray.length; i++) {
+					markersArray[i].setMap(null);
+				}
+				markersArray = new Array();
+				for ( var i = 0; i < issues.length; i++) {
+					var issue = issues[i];
+					switch (issue.creationTime) {
+						case 'During all time': filter = document.getElementById('During all time').checked; break;
+						case 'Last month': filter = document.getElementById('Last month').checked + document.getElementById('During all time').checked; break;
+						case 'Last week': filter = document.getElementById('Last month').checked + document.getElementById('Last week').checked + document.getElementById('During all time').checked; break;
+						case 'Last day': filter = document.getElementById('Last day').checked + document.getElementById('Last week').checked + 	document.getElementById('Last month').checked + document.getElementById('During all time').checked; break;
+						case 'Last hour': filter = document.getElementById('Last hour').checked + document.getElementById('Last day').checked + document.getElementById('Last week').checked + document.getElementById('Last month').checked + document.getElementById('During all time').checked; break;
+					}
+					if ((document.getElementById(allTypes).checked + document.getElementById(issue.type).checked)
+					&& (document.getElementById(issue.state).checked)&& filter) {
+						setMarker(issue);
+					}
+				}
+				if (markerCluster!=null){
+					markerCluster.clearMarkers();
+				}else{
+					var mcOptions = {gridSize: 90, maxZoom: 15};
+					markerCluster = new MarkerClusterer(map, [], mcOptions);
+				}
+				markerCluster.addMarkers(markersArray);
+			}
+
+			function updateTypeCheckBoxes() {
+				while (document.getElementById("selected_types_ul").hasChildNodes())
+					document.getElementById("selected_types_ul").removeChild(
+						document.getElementById("selected_types_ul").lastChild);
+				var liNodeList = document.getElementById("types_ul").getElementsByTagName("li");
+				for ( var i = 0; i < liNodeList.length; i++) {
+					if (liNodeList.item(i).firstChild.checked == true) {
+						var clonedNode = liNodeList.item(i).cloneNode(true);
+						var clonedNodeCheckBox = clonedNode.firstChild;
+						clonedNodeCheckBox.setAttribute("onclick","synchronizeTypeCheckBoxes()");
+						document.getElementById("selected_types_ul").appendChild(clonedNode);
+					}
+				}
+			}
+
+			function synchronizeTypeCheckBoxes() {
+				var nodeList = document.getElementById("selected_types_ul").childNodes;
+				for ( var i = 0; i < nodeList.length; i++) {
+					if (nodeList.item(i).firstChild.checked == false) {
+						var typesOriginalNodeList = document.getElementById("types_ul").getElementsByTagName("li");
+						for ( var j = 0; j < typesOriginalNodeList.length; j++) {
+							if (nodeList.item(i).firstChild.id == typesOriginalNodeList.item(j).firstChild.id)
+								typesOriginalNodeList.item(j).firstChild.checked = false;
+						}
+					}
+				}
+				updateMarkers();
+	        }
+
+			function getIssueIconColor(issueType) {
+				if (issueType == "Abandoned stuff") {
+					return "F00000";
+				} else if (issueType == "Animals and plants") {
+					return "00CC33";
+				} else if (issueType == "Property"){
+					return "FF00CC";
+				} else if (issueType == "Water resources") {
+					return "0000FF";
+				} else if (issueType == "Human actions") {
+					return "FFFF00";
+				} else if (issueType == "Garbage") {
+					return "996633";
+				} else if (issueType == "Parking and cars issues") {
+					return "FF9900";
+				} else if (issueType == "Street and roads") {
+					return "686868";
+				}
+			}
+
+			var map;
+			var markersArray = new Array();
+			function setMarker(issue) {
+				var issueIconColor = getIssueIconColor(issue.type);
+				var issueIcon = new google.maps.MarkerImage('http://chart.apis.google.com/chart?cht=mm&chs=24x32&chco=FFFFFF,'+ issueIconColor +',000000&ext=.png');
+				var iconShadow = new google.maps.MarkerImage('http://maps.google.com/mapfiles/ms/micons/msmarker.shadow.png',
+					new google.maps.Size(59, 32),
+					new google.maps.Point(0,0),
+					new google.maps.Point(16, 32)
+				);
+				var issueLatLng = new google.maps.LatLng(issue.latitude, issue.longitude);
+				var marker = new google.maps.Marker({
+					position : issueLatLng,
+					map : map,
+					icon: issueIcon,
+					shadow: iconShadow,
+				});
+				markersArray.push(marker);
+
+				
+				
+				function getImage () {
+					for ( var j = 0; j < imageIssues.length; j++) {
+						var imageIssue = imageIssues[j];
+						if (imageIssue.id == issue.id) {
+							for (var attachmentName in imageIssue.attachments){
+								return '<a class="lightboxImage" href=http://141.76.47.158:5984/betterdd/'+imageIssue.id+'/'+attachmentName+'>'+'<img id="imageIssue1" src=http://141.76.47.158:5984/betterdd/'+imageIssue.id+'/'+attachmentName+'>'+'</a>';
+				
+							}
+						}
+					
+					}
+					return '<img id="imageIssue2" src=noPhoto.png/>';
+				
+				}
+				
+				
+				google.maps.event.addListener(marker, 'click', function() {
+					//console.log(issue.id);
+					var image = getImage();
+					
+					var contentString = image+'<div class="content"><div id="type_header"><b>Type:</b></div><div id="type_content">'+issue.type+'</div><div id="subType_header"><b>Subtype:</b></div><div id="subType_content">'+issue.subType+'</div><div id="addressString_header"><b>Address:</b></div><div id="addressString_content">'+issue.addressString+'</div><div id="description_header"><b>Description:</b></div><div id="description_content">'+issue.description+'</div></div>';
+					var infowindow = new google.maps.InfoWindow({
+						content: contentString,
+						//size: new google.maps.Size(150,50)
+					});
+					infowindow.open(map,marker);
+					setTimeout('$("a.lightboxImage").fancybox()',1000);
+							
+				});
+			}
+			
+			
+			function initializeMap() {
+				var latlng = new google.maps.LatLng(51.044955569885786, 13.748188018798828);
+				var options = {
+					zoom : 13,
+					center : latlng,
+					minZoom: 11,
+					mapTypeId : google.maps.MapTypeId.ROADMAP
+				};
+
+				map = new google.maps.Map(document.getElementById("map_Dresden"),options);
+				updateMarkers();
+			}
+
+			$(document).ready(function() {
+				$(".types_btn").hover(function() {
+					$(".types ul").slideDown('fast').show();
+					$(".types ul").hover(function() {
+					}, function() {
+						$(".types ul").slideUp('fast');
+					});
+				})
+			});
+
+			var allTypes;
+			function initTypesList() {
+				allTypes = document.getElementById("all_issues");
+				var allTypesEl = document.createElement("input");
+				allTypesEl.setAttribute("id", allTypes);
+				allTypesEl.setAttribute("type", "checkbox");
+				allTypesEl.setAttribute("onclick", "updateMarkers()");
+				allTypesEl.setAttribute("checked", "true");
+				allTypes.appendChild(allTypesEl);
+				allTypes.appendChild(document.createTextNode("All issues"));
+
+				var typeIds = initTypeIds();
+				var list = document.getElementById("types_ul");
+				for ( var i = 0; i < typeIds.length; i++) {
+					var liElement = document.createElement("li");
+					var inputEl = document.createElement("input");
+					inputEl.setAttribute("id", typeIds[i]);
+					inputEl.setAttribute("type", "checkbox");
+					inputEl.setAttribute("onclick", "updateMarkers()");
+					liElement.appendChild(inputEl);
+					liElement.appendChild(document.createTextNode(typeIds[i]));
+					list.appendChild(liElement);
+				}
+			}
+
+			function initTypeIds() {
+			var typeIds = new Array();
+				typeIds[0] = "Abandoned stuff";
+				typeIds[1] = "Animals and plants";
+				typeIds[2] = "Property";
+				typeIds[3] = "Water resources";
+				typeIds[4] = "Human actions";
+				typeIds[5] = "Garbage";
+				typeIds[6] = "Parking and cars issues";
+				typeIds[7] = "Street and roads";
+				return typeIds;
+			}
+
+			function initStatesList() {
+				var stateIds = new Array();
+				stateIds[0] = "Open";
+				stateIds[1] = "Closed";
+				stateIds[2] = "Fixed";
+				var list = document.getElementById("states_ul");
+				for ( var i = 0; i < stateIds.length; i++) {
+					var liElement = document.createElement("li");
+					var inputEl = document.createElement("input");
+					inputEl.setAttribute("id", stateIds[i]);
+					inputEl.setAttribute("type", "checkbox");
+					inputEl.setAttribute("onclick", "updateMarkers()");
+					inputEl.setAttribute("checked", "");
+					liElement.appendChild(inputEl);
+					liElement.appendChild(document.createTextNode(stateIds[i]));
+					list.appendChild(liElement);
+				}
+			}
+
+			function initCreationTimeList() {
+				var creationIds = new Array();
+				creationIds[0] = "Last hour";
+				creationIds[1] = "Last day";
+				creationIds[2] = "Last week";
+				creationIds[3] = "Last month";
+				creationIds[4] = "During all time";
+				var list = document.getElementById("creation_times_ul");
+				for ( var i = 0; i < creationIds.length; i++) {
+					var liElement = document.createElement("li");
+					var inputEl = document.createElement("input");
+					inputEl.setAttribute("id", creationIds[i]);
+					inputEl.setAttribute("type", "radio");
+					inputEl.setAttribute("onclick", "updateMarkers()");
+					inputEl.setAttribute("name", "CreationTime");
+					if (creationIds[i]=="During all time") {
+						inputEl.setAttribute("checked", "true");
+					}
+					liElement.appendChild(inputEl);
+					liElement.appendChild(document.createTextNode(creationIds[i]));
+					list.appendChild(liElement);
+				}
+			}
+
+			var last_seq = null;
+			function initNewIssuesPolling()  {
+				if(last_seq)
+					paramSince = "&since=" + last_seq;
+				else
+					paramSince = "";
+			    changes_url = 'http://141.76.47.158:5984/betterdd/_changes?feed=longpoll&filter=betterdd/issues'
+				$.ajax({
+					url: changes_url+paramSince,
+					type: 'get',
+					dataType: 'jsonp',
+					success: function(json) {
+						console.log("result from couchdb:");
+				        console.dir(json);
+				        if (last_seq != null) {
+				        	// we already did the first request for the "last_seq"
+				        	// -> a real update occured
+				        	// -> update model and update markers on finish
+                            // of course it would be nice to add only the new
+                            // marker instead of updating all of them
+                            // furthermore, this update is triggered twice for 
+                            // each issue
+				        	updateModel(true);
+				        }
+				        last_seq = json.last_seq;
+				        initNewIssuesPolling();
+					}
+				});
+			}
+
+			function initPage() {
+				initTypesList();
+				initStatesList();
+				initCreationTimeList()
+				initializeMap();
+				initNewIssuesPolling();
+			}
+			
+		</script>
+	</head>
+
+	<body onload="initPage()" >
+		<div id="map_Dresden"></div>
+		<!--<div id="mapTitle"><p><b>Welcome to BetterDresden<b></p></div>-->
+		<a href="BetterDresden_districsMap.html"><div id="districtBtn" ><img id="districtImg" src="districtImg.png"><b>District division</b></div></a>
+		
+		<div class="control_panel">
+			<table class="main_table">
+				<tr><p class="control_panel_name">Show issues on the map</p><hr /></tr>
+				<tr>
+					<p class="filter_name"><b>Types</b><img class="types_btn" src="types_btn.gif" width="15"; height="15" ; align="right"></p>
+					<p id="all_issues"></p>
+					<div><ul id="selected_types_ul"></ul></div><hr />
+					<div class="types"><ul id="types_ul"><p class="dropdawn_name">Issue types</p><hr /></ul></div>
+				</tr>
+				<tr>
+					<p class="filter_name"><b>States<b></p>
+					<ul class="state" id="states_ul"></ul><hr />
+				</tr>
+				<tr>
+					<p class="filter_name"><b>Creation time</b></p>
+					<ul class="creation_time" id="creation_times_ul"></ul>
+				</tr>
+			</table>
+		</div>
+	
+
+	</body>
+</html>
